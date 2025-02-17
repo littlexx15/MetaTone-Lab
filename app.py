@@ -8,6 +8,7 @@ from torchvision import models, transforms
 import ollama
 import gradio as gr
 from TTS.api import TTS
+from rvc_infer import RVC  # 需要 RVC 推理
 
 # -------------------------------
 # 1️⃣ 面部检测 & 情绪识别
@@ -76,8 +77,6 @@ def generate_lyrics(facial_features, emotion):
     
     return lyrics
 
-
-
 # -------------------------------
 # 4️⃣ 生成旋律（PyTorch 版音乐生成）
 # -------------------------------
@@ -95,7 +94,7 @@ def generate_melody(emotion):
     }
     
     frequency = freqs.get(emotion, 262)
-    time = torch.linspace(0, melody_length, steps=int(melody_length * sample_rate))  # 修正 time 计算
+    time = torch.linspace(0, melody_length, steps=int(melody_length * sample_rate))  
     melody_wave = 0.5 * torch.sin(2 * np.pi * frequency * time)
 
     melody_path = "melody.wav"
@@ -103,25 +102,33 @@ def generate_melody(emotion):
     
     return melody_path
 
-
 # -------------------------------
-# 5️⃣ 使用 FastPitch 进行歌曲合成
+# 5️⃣ 使用 FastPitch 进行 AI 朗读（带旋律）
 # -------------------------------
-def synthesize_song(lyrics, melody_path):
-    """使用 FastPitch 进行语音合成"""
+def synthesize_fastpitch(lyrics):
+    """使用 FastPitch 进行语音合成（带旋律的 TTS）"""
     
-    tts = TTS("tts_models/en/ljspeech/fast_pitch")  # ✅ 改用 FastPitch，速度更快
-    output_wav = "output.wav"
+    tts = TTS("tts_models/en/ljspeech/fast_pitch")  
+    output_wav = "fastpitch_output.wav"
     
-    # 生成语音并加快语速，防止声音拉长
-    tts.tts_to_file(text=lyrics, file_path=output_wav, speed=1.1, max_decoder_steps=500)
+    # 生成 TTS 语音
+    tts.tts_to_file(text=lyrics, file_path=output_wav, speed=1.2, max_decoder_steps=500)
 
     return output_wav
 
+# -------------------------------
+# 6️⃣ 使用 RVC 进行歌唱转换
+# -------------------------------
+def convert_to_singing(input_wav, output_wav="singing_output.wav"):
+    """使用 RVC 将 TTS 朗读转换为 AI 歌声"""
+    
+    rvc = RVC(model_path="rvc_model.pth")  # 需要事先下载 RVC 训练好的模型
+    rvc.convert(input_wav, output_wav)
 
+    return output_wav
 
 # -------------------------------
-# 6️⃣ Gradio 界面（在线播放）
+# 7️⃣ Gradio 界面（在线播放）
 # -------------------------------
 def process_image(image):
     """完整的 AI 音乐生成流程"""
@@ -129,7 +136,7 @@ def process_image(image):
       
     # 检测情绪
     emotion = detect_emotion("input.jpg")
-    print(f"🧐 识别的情绪：{emotion}")  # ✅ 打印情绪识别结果
+    print(f"🧐 识别的情绪：{emotion}")  
 
     # 提取面部特征
     features = extract_facial_features("input.jpg")
@@ -140,19 +147,22 @@ def process_image(image):
     # 生成旋律（基于情绪）
     melody = generate_melody(emotion)
     
-    # 合成歌曲
-    song = synthesize_song(lyrics, melody)
+    # FastPitch 生成 TTS 语音（带旋律）
+    fastpitch_audio = synthesize_fastpitch(lyrics)
     
-    return lyrics, melody, song
+    # RVC 转换成 AI 歌唱
+    singing_audio = convert_to_singing(fastpitch_audio)
+
+    return lyrics, melody, singing_audio
 
 
 interface = gr.Interface(
     fn=process_image,
     inputs=gr.Image(type="numpy"),
     outputs=[
-        "text",  # 歌词文本
-        gr.Audio(type="filepath", format="wav"),  # 🎵 旋律（在线播放）
-        gr.Audio(type="filepath", format="wav")   # 🎤 生成的歌曲（在线播放）
+        "text",  
+        gr.Audio(type="filepath", format="wav"),  
+        gr.Audio(type="filepath", format="wav")   
     ],
     title="AI 歌曲生成器",
     description="上传一张照片，AI 将根据你的面部特征生成一首歌曲 🎵"
