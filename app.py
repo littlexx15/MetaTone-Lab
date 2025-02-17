@@ -7,7 +7,7 @@ import torchaudio
 from torchvision import models, transforms
 import ollama
 import gradio as gr
-from TTS.api import TTS  # Coqui-TTS（VITS Singing）
+from TTS.api import TTS
 
 # -------------------------------
 # 1️⃣ 面部检测 & 情绪识别
@@ -105,7 +105,7 @@ def generate_melody(emotion):
 
 
 # -------------------------------
-# 5️⃣ 使用 VITS-Singing 进行歌曲合成
+# 5️⃣ 使用 Speedy-Speech 进行歌曲合成
 # -------------------------------
 def synthesize_song(lyrics, melody_path):
     """使用 Speedy-Speech 进行歌唱合成"""
@@ -122,7 +122,7 @@ def synthesize_song(lyrics, melody_path):
 
 
 # -------------------------------
-# 6️⃣ Gradio 界面
+# 6️⃣ Gradio 界面（在线播放）
 # -------------------------------
 def process_image(image):
     """完整的 AI 音乐生成流程"""
@@ -138,7 +138,11 @@ def process_image(image):
 interface = gr.Interface(
     fn=process_image,
     inputs=gr.Image(type="numpy"),
-    outputs=["text", "file", "file"],
+    outputs=[
+        "text",  # 歌词文本
+        gr.Audio(type="filepath", format="wav"),  # 🎵 旋律（在线播放）
+        gr.Audio(type="filepath", format="wav")   # 🎤 生成的歌曲（在线播放）
+    ],
     title="AI 歌曲生成器",
     description="上传一张照片，AI 将根据你的面部特征生成一首歌曲 🎵"
 )
