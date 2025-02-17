@@ -65,21 +65,27 @@ def extract_facial_features(image_path):
 # 3️⃣ 生成歌词（Ollama / Gemma:2b）
 # -------------------------------
 def generate_lyrics(facial_features):
-    """使用 Ollama 生成歌词"""
-    prompt = f"A poetic song about a person with {facial_features['face_shape']} face and {facial_features['skin_color']} skin."
+    """确保歌词长度足够"""
+    prompt = f"A poetic song (at least 15 words) about a person with {facial_features['face_shape']} face and {facial_features['skin_color']} skin."
     
     response = ollama.chat(model="gemma:2b", messages=[{"role": "user", "content": prompt}])
     
-    return response['message']['content']
+    # 确保歌词足够长
+    lyrics = response['message']['content']
+    if len(lyrics.split()) < 15:
+        lyrics += " This song is full of emotions and melodies that flow smoothly."
+    
+    return lyrics
+
 
 # -------------------------------
 # 4️⃣ 生成旋律（PyTorch 版音乐生成）
 # -------------------------------
 def generate_melody(emotion):
-    """使用 PyTorch 生成旋律"""
-    sample_rate = 16000
-    melody_length = 4  
-
+    """确保音频至少 2 秒"""
+    sample_rate = 22050  # 确保采样率够高
+    melody_length = 2  # 至少 2 秒
+    
     freqs = {
         "happy": 440,
         "sad": 220,
@@ -89,7 +95,7 @@ def generate_melody(emotion):
     }
     
     frequency = freqs.get(emotion, 262)
-    time = torch.linspace(0, melody_length, steps=melody_length * sample_rate)
+    time = torch.linspace(0, melody_length, steps=int(melody_length * sample_rate))  # 修正 time 计算
     melody_wave = 0.5 * torch.sin(2 * np.pi * frequency * time)
 
     melody_path = "melody.wav"
@@ -97,22 +103,22 @@ def generate_melody(emotion):
     
     return melody_path
 
+
 # -------------------------------
 # 5️⃣ 使用 VITS-Singing 进行歌曲合成
 # -------------------------------
 def synthesize_song(lyrics, melody_path):
-    """使用 VITS 进行快速歌唱合成"""
+    """使用 Speedy-Speech 进行歌唱合成"""
     
-    # 选择最快模型（speedy-speech）或高质量（vits）
-    tts = TTS("tts_models/en/ljspeech/speedy-speech")  # 🚀 超快
-    # tts = TTS("tts_models/en/ljspeech/vits")  # ⚡ 质量 & 速度平衡
-    # tts = TTS("tts_models/en/jenny/jenny")  # 🌟 最高质量但稍慢
+    # 加载 Speedy-Speech
+    tts = TTS("tts_models/en/ljspeech/speedy-speech")  # ✅ 无需 espeak-ng
 
-    # 生成歌曲语音
+    # 生成歌唱语音
     output_wav = "output.wav"
     tts.tts_to_file(text=lyrics, file_path=output_wav)
 
     return output_wav
+
 
 
 # -------------------------------
