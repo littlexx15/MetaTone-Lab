@@ -8,7 +8,7 @@ from torchvision import models, transforms
 import ollama
 import gradio as gr
 from TTS.api import TTS
-from rvc_infer import RVC  # 需要 RVC 推理
+from openvoice import OpenVoice
 
 # -------------------------------
 # 1️⃣ 面部检测 & 情绪识别
@@ -120,10 +120,10 @@ def synthesize_fastpitch(lyrics):
 # 6️⃣ 使用 RVC 进行歌唱转换
 # -------------------------------
 def convert_to_singing(input_wav, output_wav="singing_output.wav"):
-    """使用 RVC 将 TTS 朗读转换为 AI 歌声"""
+    """使用 OpenVoice 直接生成带旋律的 AI 歌唱"""
     
-    rvc = RVC(model_path="rvc_model.pth")  # 需要事先下载 RVC 训练好的模型
-    rvc.convert(input_wav, output_wav)
+    model = OpenVoice(model_path="openvoice_model.pth")  # 需要下载 OpenVoice 预训练模型
+    model.convert(input_wav, output_wav, melody="auto")  # 自动生成旋律
 
     return output_wav
 
