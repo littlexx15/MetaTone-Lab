@@ -101,16 +101,19 @@ def generate_melody(emotion):
 # 5️⃣ 使用 VITS-Singing 进行歌曲合成
 # -------------------------------
 def synthesize_song(lyrics, melody_path):
-    """使用 VITS Singing-TTS 进行歌唱合成"""
+    """使用 VITS 进行快速歌唱合成"""
     
-    # 加载 VITS（带 F0 音高控制的歌唱 TTS）
-    tts = TTS("tts_models/en/jenny/vits-singing")
+    # 选择最快模型（speedy-speech）或高质量（vits）
+    tts = TTS("tts_models/en/ljspeech/speedy-speech")  # 🚀 超快
+    # tts = TTS("tts_models/en/ljspeech/vits")  # ⚡ 质量 & 速度平衡
+    # tts = TTS("tts_models/en/jenny/jenny")  # 🌟 最高质量但稍慢
 
-    # 生成歌唱语音（根据歌词和旋律）
+    # 生成歌曲语音
     output_wav = "output.wav"
-    tts.tts_to_file(text=lyrics, file_path=output_wav, use_speaker="singing", speed=1.0)
+    tts.tts_to_file(text=lyrics, file_path=output_wav)
 
     return output_wav
+
 
 # -------------------------------
 # 6️⃣ Gradio 界面
