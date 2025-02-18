@@ -6,6 +6,7 @@ import numpy as np
 import gradio as gr
 from torchvision import models, transforms
 import ollama
+from deepface import DeepFace
 
 # -------------------------------
 # 1️⃣ 面部检测 & 情绪识别
@@ -17,29 +18,10 @@ if not os.path.exists(PREDICTOR_PATH):
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(PREDICTOR_PATH)
 
-emotion_model = models.resnet18(pretrained=True)
-emotion_model.fc = torch.nn.Linear(512, 7)
-emotion_model.eval()
-
-emotion_labels = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
-
 def detect_emotion(image_path):
-    """使用 PyTorch 进行情绪识别"""
-    image = cv2.imread(image_path)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    image = cv2.resize(image, (224, 224))
-
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5])
-    ])
-    image = transform(image).unsqueeze(0)
-
-    with torch.no_grad():
-        outputs = emotion_model(image)
-        _, predicted = torch.max(outputs, 1)
-
-    return emotion_labels[predicted.item()]
+    """使用 DeepFace 进行情绪识别"""
+    analysis = DeepFace.analyze(img_path=image_path, actions=['emotion'], enforce_detection=False)
+    return analysis[0]['dominant_emotion']
 
 # -------------------------------
 # 2️⃣ 面部特征提取
@@ -50,12 +32,26 @@ def extract_facial_features(image_path):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     faces = detector(gray)
 
-    features = {"face_shape": "unknown", "skin_color": "unknown"}
+    features = {
+        "face_shape": "unknown",
+        "skin_color": "unknown",
+        "hair_color": "unknown",
+        "facial_hair": "none",
+        "nose_shape": "unknown",
+        "glasses": "none",
+        "symmetry": "unknown",
+        "hat": "none"
+    }
 
     for face in faces:
         landmarks = predictor(gray, face)
         features["face_shape"] = "oval" if landmarks.part(0).x < landmarks.part(16).x else "round"
-        features["skin_color"] = "light" if np.mean(gray) > 127 else "dark"
+        avg_color = np.mean(img, axis=(0, 1))
+        features["skin_color"] = "light" if avg_color[2] > 160 else "dark"
+        features["hair_color"] = "brown" if avg_color[0] > 80 else "black"
+        features["facial_hair"] = "beard" if np.mean(gray[landmarks.part(8).y:landmarks.part(30).y, :]) < 90 else "none"
+        features["glasses"] = "yes" if np.mean(gray[landmarks.part(36).y:landmarks.part(45).y, :]) < 50 else "none"
+        features["hat"] = "yes" if np.mean(gray[:landmarks.part(19).y, :]) < 60 else "none"
     
     return features
 
@@ -64,7 +60,7 @@ def extract_facial_features(image_path):
 # -------------------------------
 def generate_lyrics(facial_features, emotion):
     """结合面部特征和情绪生成歌词"""
-    prompt = f"A poetic song about a person with {facial_features['face_shape']} face and {facial_features['skin_color']} skin, feeling {emotion}."
+    prompt = f"A poetic song about a person with {facial_features['face_shape']} face, {facial_features['skin_color']} skin, {facial_features['hair_color']} hair, and wearing {facial_features['glasses']}. They are feeling {emotion}."
     
     response = ollama.chat(model="gemma:2b", messages=[{"role": "user", "content": prompt}])
     
