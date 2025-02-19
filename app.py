@@ -59,16 +59,42 @@ def extract_facial_features(image_path):
 # 3️⃣ 生成歌词 (Ollama / Gemma:2b)
 # -------------------------------
 def generate_lyrics(facial_features, emotion):
-    """结合面部特征和情绪生成歌词"""
-    prompt = f"A poetic song about a person with {facial_features['face_shape']} face, {facial_features['skin_color']} skin, {facial_features['hair_color']} hair, and wearing {facial_features['glasses']}. They are feeling {emotion}."
+    """结合面部特征和情绪生成优化后的歌词"""
+    
+    prompt = f"""
+    Write a poetic song inspired by folk storytelling, rich in imagery and emotion.
+    The song is about a person with {facial_features['face_shape']} face, {facial_features['skin_color']} skin, {facial_features['hair_color']} hair, and wearing {facial_features['glasses']}.
+    They are feeling {emotion}. 
+    Use metaphor, symbolism, and vivid descriptions to enhance the lyrics.
+
+    Structure the lyrics in a storytelling format:
+    - [Verse 1] Introduce the scene and the main character's emotions.
+    - [Chorus] A memorable, poetic refrain that captures the song's essence.
+    - [Verse 2] Develop the narrative, adding depth and contrast.
+
+    Example of the desired style:
+    - Like Bob Dylan or Leonard Cohen, the lyrics should feel poetic, thoughtful, and evocative.
+    - Ensure the lyrics follow a loose rhyme scheme (AABB or ABAB) but prioritize storytelling over strict rhyming.
+    """
     
     response = ollama.chat(model="gemma:2b", messages=[{"role": "user", "content": prompt}])
-    
     lyrics = response['message']['content']
+
+    # 确保歌词格式良好
+    lyrics = format_lyrics(lyrics)
+
+    # 避免歌词过短，增加一些诗意的结尾
     if len(lyrics.split()) < 15:
-        lyrics += " This song is full of emotions and melodies that flow smoothly."
-    
+        lyrics += "\nAnd so the night fades into longing, as the echoes of love remain."
+
     return lyrics
+
+def format_lyrics(lyrics):
+    """优化歌词格式，使其更整齐、更有诗意"""
+    lines = lyrics.split("\n")
+    formatted_lines = [line.strip().capitalize() for line in lines if line.strip()]
+    return "\n".join(formatted_lines)
+
 
 # -------------------------------
 # 4️⃣ Gradio 界面
@@ -101,3 +127,4 @@ interface = gr.Interface(
 if __name__ == "__main__":
     print("🚀 Python 运行成功！")
     interface.launch()
+
