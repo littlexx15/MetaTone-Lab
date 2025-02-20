@@ -1,130 +1,97 @@
 import os
 import cv2
-import dlib
 import torch
 import numpy as np
 import gradio as gr
-from torchvision import models, transforms
+from torchvision import transforms
+from PIL import Image, ImageDraw
 import ollama
-from deepface import DeepFace
+import open_clip
 
 # -------------------------------
-# 1️⃣ 面部检测 & 情绪识别
+# 1️⃣ 识别绘画内容 (CLIP)
 # -------------------------------
-PREDICTOR_PATH = os.path.join(os.path.dirname(__file__), "shape_predictor_68_face_landmarks.dat")
-if not os.path.exists(PREDICTOR_PATH):
-    raise FileNotFoundError(f"❌ 找不到 {PREDICTOR_PATH}，请确保文件已下载！")
+model, preprocess, tokenizer = open_clip.create_model_and_transforms("ViT-B/32", pretrained="laion2b_s34b_b79k")
 
-detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor(PREDICTOR_PATH)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model.to(device)
 
-def detect_emotion(image_path):
-    """使用 DeepFace 进行情绪识别"""
-    analysis = DeepFace.analyze(img_path=image_path, actions=['emotion'], enforce_detection=False)
-    return analysis[0]['dominant_emotion']
-
-# -------------------------------
-# 2️⃣ 面部特征提取
-# -------------------------------
-def extract_facial_features(image_path):
-    """使用 OpenCV 和 dlib 提取面部特征"""
-    img = cv2.imread(image_path)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = detector(gray)
-
-    features = {
-        "face_shape": "unknown",
-        "skin_color": "unknown",
-        "hair_color": "unknown",
-        "facial_hair": "none",
-        "nose_shape": "unknown",
-        "glasses": "none",
-        "symmetry": "unknown",
-        "hat": "none"
-    }
-
-    for face in faces:
-        landmarks = predictor(gray, face)
-        features["face_shape"] = "oval" if landmarks.part(0).x < landmarks.part(16).x else "round"
-        avg_color = np.mean(img, axis=(0, 1))
-        features["skin_color"] = "light" if avg_color[2] > 160 else "dark"
-        features["hair_color"] = "brown" if avg_color[0] > 80 else "black"
-        features["facial_hair"] = "beard" if np.mean(gray[landmarks.part(8).y:landmarks.part(30).y, :]) < 90 else "none"
-        features["glasses"] = "yes" if np.mean(gray[landmarks.part(36).y:landmarks.part(45).y, :]) < 50 else "none"
-        features["hat"] = "yes" if np.mean(gray[:landmarks.part(19).y, :]) < 60 else "none"
+def analyze_painting(image):
+    """使用 CLIP 识别绘画内容，生成描述"""
+    image = image.convert("RGB")
+    image_tensor = preprocess(image).unsqueeze(0).to(device)
     
-    return features
+    # CLIP 预定义的文本描述类别
+    descriptions = [
+        "a surreal painting",
+        "an abstract artwork",
+        "a fantasy scene",
+        "a futuristic cityscape",
+        "a dreamy landscape",
+        "a dark, melancholic scene",
+        "a bright and colorful painting",
+        "a mysterious, eerie painting"
+    ]
+    text_tokens = tokenizer(descriptions).to(device)
+    
+    with torch.no_grad():
+        image_features = model.encode_image(image_tensor)
+        text_features = model.encode_text(text_tokens)
+        similarity = (image_features @ text_features.T).softmax(dim=-1)
+        best_match = descriptions[similarity.argmax().item()]
+    
+    return best_match
 
 # -------------------------------
-# 3️⃣ 生成歌词 (Ollama / Gemma:2b)
+# 2️⃣ 生成歌词 (Ollama / Gemma:2b)
 # -------------------------------
-def generate_lyrics(facial_features, emotion):
-    """结合面部特征和情绪生成优化后的歌词"""
-    
+def generate_lyrics(painting_description):
+    """根据绘画描述生成诗意歌词"""
     prompt = f"""
-    Write a poetic song inspired by folk storytelling, rich in imagery and emotion.
-    The song is about a person with {facial_features['face_shape']} face, {facial_features['skin_color']} skin, {facial_features['hair_color']} hair, and wearing {facial_features['glasses']}.
-    They are feeling {emotion}. 
-    Use metaphor, symbolism, and vivid descriptions to enhance the lyrics.
-
-    Structure the lyrics in a storytelling format:
-    - [Verse 1] Introduce the scene and the main character's emotions.
-    - [Chorus] A memorable, poetic refrain that captures the song's essence.
-    - [Verse 2] Develop the narrative, adding depth and contrast.
+    Write a poetic song inspired by {painting_description}.
+    The song should evoke emotions and create vivid imagery.
+    Use metaphor, symbolism, and a storytelling format:
+    - [Verse 1] Introduce the scene inspired by the painting.
+    - [Chorus] A memorable refrain that captures the song's essence.
+    - [Verse 2] Expand on the narrative, adding depth and contrast.
 
     Example of the desired style:
-    - Like Bob Dylan or Leonard Cohen, the lyrics should feel poetic, thoughtful, and evocative.
-    - Ensure the lyrics follow a loose rhyme scheme (AABB or ABAB) but prioritize storytelling over strict rhyming.
+    - Like Bob Dylan or Leonard Cohen, poetic and evocative lyrics.
+    - Follow a loose rhyme scheme (AABB or ABAB) but prioritize storytelling.
     """
     
     response = ollama.chat(model="gemma:2b", messages=[{"role": "user", "content": prompt}])
     lyrics = response['message']['content']
-
-    # 确保歌词格式良好
-    lyrics = format_lyrics(lyrics)
-
-    # 避免歌词过短，增加一些诗意的结尾
-    if len(lyrics.split()) < 15:
-        lyrics += "\nAnd so the night fades into longing, as the echoes of love remain."
-
-    return lyrics
+    return format_lyrics(lyrics)
 
 def format_lyrics(lyrics):
-    """优化歌词格式，使其更整齐、更有诗意"""
+    """优化歌词格式"""
     lines = lyrics.split("\n")
     formatted_lines = [line.strip().capitalize() for line in lines if line.strip()]
     return "\n".join(formatted_lines)
 
-
 # -------------------------------
-# 4️⃣ Gradio 界面
+# 3️⃣ Gradio 界面 (绘画输入)
 # -------------------------------
-def process_image(image):
+def process_painting(image):
     """完整的 AI 歌词生成流程"""
-    cv2.imwrite("input.jpg", image)
-      
-    # 检测情绪
-    emotion = detect_emotion("input.jpg")
-    print(f"🤔 识别的情绪：{emotion}")  # ✅ 打印情绪结果
-
-    # 提取面部特征
-    features = extract_facial_features("input.jpg")
-    print(f"📌 提取的面部特征：{features}")  # ✅ 打印面部特征
+    painting_description = analyze_painting(image)
+    print(f"🖼 识别的绘画风格：{painting_description}")
     
     # 生成歌词
-    lyrics = generate_lyrics(features, emotion)
-
-    return f"🎭 识别的情绪：{emotion}\n🖼 提取的面部特征：{features}\n🎶 生成的歌词：\n{lyrics}"
+    lyrics = generate_lyrics(painting_description)
+    
+    return f"🎨 识别的绘画风格：{painting_description}\n🎶 生成的歌词：\n{lyrics}"
 
 interface = gr.Interface(
-    fn=process_image,
-    inputs=gr.Image(type="numpy"),
+    fn=process_painting,
+    inputs=gr.Sketchpad(),  # 允许用户绘画
     outputs="text",
-    title="AI 歌词生成器",
-    description="上传一张照片，AI 将根据你的面部特征生成一首歌词 🎵"
+    title="AI 绘画歌词生成器",
+    description="在画布上绘制一幅画，AI 将根据内容生成一首歌词 🎵",
 )
 
 if __name__ == "__main__":
     print("🚀 Python 运行成功！")
-    interface.launch()
+    interface.launch()  # ✅ 正确写法
 
