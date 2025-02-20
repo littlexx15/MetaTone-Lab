@@ -8,51 +8,31 @@ from transformers import BlipProcessor, BlipForConditionalGeneration
 from sklearn.cluster import KMeans  # 颜色提取
 import ollama  # 歌词生成
 
-
 # -------------------------------
-# 1️⃣ 识别绘画内容 (CLIP)
+# 1️⃣ 识别绘画内容 (CLIP + BLIP)
 # -------------------------------
 model, preprocess, tokenizer = open_clip.create_model_and_transforms("ViT-B/32", pretrained="laion2b_s34b_b79k")
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
-
-def analyze_painting(image):
-    """使用 CLIP 识别绘画内容，生成描述"""
-
-    print(f"📷 image 类型: {type(image)}")  # 打印 image 的类型
-    if isinstance(image, dict):
-        print(f"📷 image.keys(): {image.keys()}")  # 查看字典键
-
-    # ✅ 处理 Gradio Sketchpad 传入的 dict 数据
-    if isinstance(image, dict):  
-        if "composite" in image:  # Sketchpad 返回的数据结构包含 'composite'
-            image = image["composite"]  # 提取 composite 数据
-            print(f"📷 提取 composite 后 image 类型: {type(image)}")  
-        else:
-            raise ValueError(f"image 字典中没有 'composite' 键，实际内容: {image.keys()}")
-
-    # ✅ 处理 list 类型，转换为 NumPy 数组
-    if isinstance(image, list):
-        print("📷 image 是 list，尝试转换为 NumPy 数组")
-        image = np.array(image, dtype=np.uint8)
-
-    # ✅ 确保 image 是 NumPy 数组，避免 torchvision 报错
-    if not isinstance(image, np.ndarray):
-        raise TypeError(f"转换失败，image 仍然是 {type(image)}，应为 NumPy 数组")
-
-    print(f"📷 确保 image 现在是 NumPy 数组: {type(image)}")
-    
-    image = Image.fromarray(image)  # 转换成 PIL.Image
-    print(f"📷 转换为 PIL.Image 后 image 类型: {type(image)}")  
-    image = image.convert("RGB")  # 转换为 RGB 格式
-    image_tensor = preprocess(image).unsqueeze(0).to(device)
-
-    return "测试通过"
 
 # ✅ 初始化 BLIP（用于生成具体的画面描述）
 processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
 blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(device)
+
+def ensure_pil_image(image):
+    """确保 `image` 是 `PIL.Image` 类型，防止 `list` 类型错误"""
+    if isinstance(image, dict) and "composite" in image:
+        image = Image.fromarray(np.array(image["composite"], dtype=np.uint8))
+    elif isinstance(image, list):
+        print("📷 image 是 list，转换为 NumPy 数组")
+        image = np.array(image, dtype=np.uint8)
+        image = Image.fromarray(image)
+    elif isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    elif not isinstance(image, Image.Image):
+        raise TypeError(f"❌ 错误: image 类型 {type(image)} 不是 PIL.Image")
+
+    return image.convert("RGB")
 
 def extract_visual_features(image):
     """提取画面风格关键词（颜色、线条）"""
@@ -80,22 +60,25 @@ def describe_image_with_blip(image):
     return processor.decode(caption[0], skip_special_tokens=True)
 
 def analyze_painting(image):
-    """生成画面描述，不只是分类"""
-    if isinstance(image, dict) and "composite" in image:
-        image = Image.fromarray(np.array(image["composite"], dtype=np.uint8))
+    """生成画面描述"""
 
-    image = image.convert("RGB")  
+    # ✅ **彻底修复 `image` 类型问题**
+    image = ensure_pil_image(image)
+    print(f"✅ 转换后 image 类型: {type(image)}")
+
+    # **转换为 Tensor**
     image_tensor = preprocess(image).unsqueeze(0).to(device)
 
     # **使用 BLIP 生成画面描述**
     blip_description = describe_image_with_blip(image)
 
-    # **CLIP 生成情绪词**
+    # **CLIP 生成情绪关键词**
     descriptions = ["自由而超现实", "梦幻而奇妙", "充满活力", "神秘而深邃", "抽象而富有张力"]
     text_tokens = tokenizer(descriptions).to(device)
+    
     with torch.no_grad():
         similarity = (model.encode_image(image_tensor) @ model.encode_text(text_tokens).T).softmax(dim=-1)
-    
+
     clip_keyword = descriptions[similarity.argmax().item()]
     visual_keywords = extract_visual_features(image)
 
@@ -146,7 +129,6 @@ def format_lyrics(lyrics):
     lines = lyrics.split("\n")
     formatted_lines = [line.strip().capitalize() for line in lines if line.strip()]
     return "\n".join(formatted_lines)
-
 
 # -------------------------------
 # 3️⃣ Gradio 界面 (绘画输入)
