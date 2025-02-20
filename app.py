@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import gradio as gr
 from torchvision import transforms
-from PIL import Image, ImageDraw
+from PIL import Image
 import ollama
 import open_clip
 
@@ -18,8 +18,37 @@ model.to(device)
 
 def analyze_painting(image):
     """使用 CLIP 识别绘画内容，生成描述"""
-    image = image.convert("RGB")
+
+    print(f"📷 image 类型: {type(image)}")  # 打印 image 的类型
+    if isinstance(image, dict):
+        print(f"📷 image.keys(): {image.keys()}")  # 查看字典键
+
+    # ✅ 处理 Gradio Sketchpad 传入的 dict 数据
+    if isinstance(image, dict):  
+        if "composite" in image:  # Sketchpad 返回的数据结构包含 'composite'
+            image = image["composite"]  # 提取 composite 数据
+            print(f"📷 提取 composite 后 image 类型: {type(image)}")  
+        else:
+            raise ValueError(f"image 字典中没有 'composite' 键，实际内容: {image.keys()}")
+
+    # ✅ 处理 list 类型，转换为 NumPy 数组
+    if isinstance(image, list):
+        print("📷 image 是 list，尝试转换为 NumPy 数组")
+        image = np.array(image, dtype=np.uint8)
+
+    # ✅ 确保 image 是 NumPy 数组，避免 torchvision 报错
+    if not isinstance(image, np.ndarray):
+        raise TypeError(f"转换失败，image 仍然是 {type(image)}，应为 NumPy 数组")
+
+    print(f"📷 确保 image 现在是 NumPy 数组: {type(image)}")
+    
+    image = Image.fromarray(image)  # 转换成 PIL.Image
+    print(f"📷 转换为 PIL.Image 后 image 类型: {type(image)}")  
+    image = image.convert("RGB")  # 转换为 RGB 格式
     image_tensor = preprocess(image).unsqueeze(0).to(device)
+
+    return "测试通过"
+
     
     # CLIP 预定义的文本描述类别
     descriptions = [
@@ -85,7 +114,7 @@ def process_painting(image):
 
 interface = gr.Interface(
     fn=process_painting,
-    inputs=gr.Sketchpad(),  # 允许用户绘画
+    inputs=gr.Sketchpad(),  # ✅ 直接去掉 output_mode
     outputs="text",
     title="AI 绘画歌词生成器",
     description="在画布上绘制一幅画，AI 将根据内容生成一首歌词 🎵",
@@ -94,4 +123,3 @@ interface = gr.Interface(
 if __name__ == "__main__":
     print("🚀 Python 运行成功！")
     interface.launch()  # ✅ 正确写法
-
