@@ -1,12 +1,13 @@
 import cv2
 import torch
 import numpy as np
-import gradio as gr
+import streamlit as st
 from PIL import Image
 import open_clip
 from transformers import BlipProcessor, BlipForConditionalGeneration
 from sklearn.cluster import KMeans  # 颜色提取
 import ollama  # 歌词生成
+from streamlit_drawable_canvas import st_canvas  # ✅ 替换 Gradio 画布
 
 # -------------------------------
 # 1️⃣ 识别绘画内容 (CLIP + BLIP)
@@ -26,16 +27,8 @@ blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image
 
 def ensure_pil_image(image):
     """确保 `image` 是 `PIL.Image` 类型"""
-    if isinstance(image, dict) and "composite" in image:
-        image = Image.fromarray(np.array(image["composite"], dtype=np.uint8))
-    elif isinstance(image, list):  # Gradio 可能返回 list
-        image = np.array(image, dtype=np.uint8)
-        image = Image.fromarray(image)
-    elif isinstance(image, np.ndarray):
-        image = Image.fromarray(image)
-    elif not isinstance(image, Image.Image):
-        raise TypeError(f"❌ 错误: image 类型 {type(image)} 不是 PIL.Image")
-
+    if isinstance(image, np.ndarray):
+        return Image.fromarray(image).convert("RGB")
     return image.convert("RGB")
 
 def extract_visual_features(image):
@@ -63,23 +56,16 @@ def describe_image_with_blip(image):
         caption = blip_model.generate(**inputs, max_length=50, do_sample=True, temperature=0.9)
     return processor.decode(caption[0], skip_special_tokens=True)
 
-
 def analyze_painting(image):
     """生成画面描述"""
-
-    # ✅ **彻底修复 `image` 类型问题**
     image = ensure_pil_image(image)
     print(f"✅ 转换后 image 类型: {type(image)}")
 
-    # **转换为 Tensor**
     image_tensor = preprocess(image).unsqueeze(0).to(device)
-
-    # **使用 BLIP 生成画面描述**
     blip_description = describe_image_with_blip(image)
 
-    # **CLIP 生成情绪关键词**
     descriptions = ["自由而超现实", "梦幻而奇妙", "充满活力", "神秘而深邃", "抽象而富有张力"]
-    text_tokens = open_clip.tokenize(descriptions).to(device)  # ✅ 修正 CLIP 处理方式
+    text_tokens = open_clip.tokenize(descriptions).to(device)
     
     with torch.no_grad():
         similarity = (model.encode_image(image_tensor) @ model.encode_text(text_tokens).T).softmax(dim=-1)
@@ -136,26 +122,39 @@ def format_lyrics(lyrics):
     return "\n".join(formatted_lines)
 
 # -------------------------------
-# 3️⃣ Gradio 界面 (绘画输入)
+# 3️⃣ Streamlit 界面 (支持颜色 & 画笔调节)
 # -------------------------------
-def process_painting(image):
-    """完整的 AI 歌词生成流程"""
-    painting_description = analyze_painting(image)
-    print(f"🖼 识别的绘画风格：{painting_description}")
-    
-    # 生成歌词
-    lyrics = generate_lyrics(painting_description)
-    
-    return f"🎨 识别的绘画风格：{painting_description}\n🎶 生成的歌词：\n{lyrics}"
+st.title("🎨 AI 绘画歌词生成器")
+st.write("在画布上自由绘画，支持颜色和笔刷调整，AI 将生成歌词 🎵")
 
-interface = gr.Interface(
-    fn=process_painting,
-    inputs=gr.Sketchpad(),  # ✅ 只保留基本参数
-    outputs="text",
-    title="AI 绘画歌词生成器",
-    description="在画布上绘制一幅画，AI 将根据内容生成一首歌词 🎵",
+# 颜色选择 & 画笔大小
+color = st.color_picker("选择画笔颜色", "#000000")
+brush_size = st.slider("画笔大小", 1, 50, 5)
+
+# 画布组件
+canvas_result = st_canvas(
+    fill_color="rgba(255, 255, 255, 0)",  # 透明背景
+    stroke_width=brush_size,
+    stroke_color=color,
+    background_color="white",
+    update_streamlit=True,
+    width=512,
+    height=512,
+    drawing_mode="freedraw",
+    key="canvas",
 )
 
-if __name__ == "__main__":
-    print("🚀 Python 运行成功！")
-    interface.launch()  # ✅ 正确写法
+# 提交按钮
+if st.button("🎶 生成歌词"):
+    if canvas_result.image_data is not None:
+        image = Image.fromarray((canvas_result.image_data * 255).astype(np.uint8)).convert("RGB")
+        painting_description = analyze_painting(image)
+        lyrics = generate_lyrics(painting_description)
+
+        st.subheader("🎨 识别的绘画风格")
+        st.write(painting_description)
+
+        st.subheader("🎶 生成的歌词")
+        st.write(lyrics)
+    else:
+        st.error("请先在画布上绘制内容！")
