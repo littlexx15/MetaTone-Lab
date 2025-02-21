@@ -34,51 +34,71 @@ def describe_image_with_blip(image):
     with torch.no_grad():
         caption_ids = blip_model.generate(
             **inputs,
-            max_length=120,
+            max_length=80,
             do_sample=True,
-            top_p=0.9,
+            top_p=0.8,
             top_k=40,
-            temperature=1.0,
+            temperature=0.7,
             num_return_sequences=1,
-            num_beams=5,
+            num_beams=3,
             early_stopping=True,
             no_repeat_ngram_size=2
-        )
+        )# 降低top_p和temperature减少幻想
     caption_str = processor.decode(caption_ids[0], skip_special_tokens=True)
     print(f"[BLIP Large 描述] {caption_str}")
     return caption_str
 
 def generate_lyrics(painting_description):
     """
-    根据画面描述生成诗意歌词。
+    根据画面描述生成更具故事性、情感深度和叙事结构的歌词。
+    参考了写歌词的进阶技巧：故事讲述、情感共鸣、隐喻明喻、叙事结构、押韵等。
     """
     prompt = f"""
-    Write a poetic song inspired by this description:
+    You are a skilled lyricist and storyteller. Based on the following description, please write a poetic song:
     "{painting_description}"
     
-    - Capture the **emotions** of the scene rather than describing it directly.
-    - Use **imagery and symbolism** to create a story inspired by the painting.
-    - The song should feel like a **mystical journey**, **a lonely adventure**, or **a dreamy reflection**.
-    - Avoid generic words like "masterpiece" or "paintbrush". Instead, use metaphors related to art, light, and nature.
-    
-    Suggested format:
-    
-    **[Verse 1]**  
-    Set the mood with visual imagery and emotional depth.  
-    Introduce a **mystical character** (a lost wolf, a wandering artist, a floating soul).  
-    
-    **[Chorus]**  
-    A repeated poetic line that captures the essence of the song.  
-    
-    **[Verse 2]**  
-    Expand on the emotional journey, using **contrast and tension**.  
-    
-    **Write in a loose poetic structure, prioritizing storytelling over rhyme.**
+    In this song, apply the following advanced songwriting guidelines:
+    1. **Storytelling and Emotional Resonance**: Craft a clear narrative arc that can emotionally engage listeners. 
+       - Let the story unfold across verses, building tension or insight before the chorus. 
+       - Make sure the emotions are authentic, drawing on personal or universal truths.
+    2. **Imagery and Symbolism**: Use vivid imagery, metaphors, and similes to create a mental picture. 
+       - Let the visuals from the painting inform symbolic elements or hidden meanings in your lyrics.
+    3. **Song Structure**: Organize the song with verses, chorus, and optionally a bridge or pre-chorus.
+       - Verses: reveal details of the story or the emotional journey.
+       - Chorus: capture the essence or main theme, repeated as a memorable hook.
+       - Bridge: provide a moment of reflection, contrast, or a turning point in the narrative.
+    4. **Rhyme and Musicality**: Aim for a sense of rhythm and flow. 
+       - You can use simple or slant rhymes, but keep them subtle. 
+       - Make the words feel naturally musical, even when read aloud.
+    5. **Balance with Melody**: Though we don't have an actual melody here, write lyrics that could be easily set to music.
+       - Keep lines relatively concise. 
+       - Avoid overly dense text that might be hard to sing.
+    6. **Focus on the Lyricist's Role**: Remember the importance of the lyricist in shaping the emotional core of a song. 
+       - Let the words complement an imaginary melody without overshadowing it.
+    7. **Avoid Overused Words**: 
+       - Steer clear of generic words like "masterpiece," "paintbrush," or clichés that might cheapen the emotional impact.
+    8. **Reference Emotional Context**: If the painting has a certain mood or color palette, let that influence the tone of the song.
+
+    **Additional tips**:
+    - Draw on the synergy between composer and lyricist (like Carole King and Gerry Goffin), where the lyrics fit seamlessly with the imagined music.
+    - Keep it straightforward yet emotionally impactful, similar to how Goffin’s lyrics were direct but deeply resonant.
+    - Focus on capturing the painting’s emotional essence rather than describing it literally.
+
+    **Suggested format**:
+    - [Verse 1]: Introduce the setting or main character, setting the tone for the story.
+    - [Chorus]: A repeated poetic line or theme that captures the essence of the song.
+    - [Verse 2]: Expand on the narrative, show progression or conflict.
+    - [Bridge or Pre-Chorus (optional)]: A twist, reflection, or emotional pivot.
+    - [Chorus - repeated]
+
+    **Write in a loose poetic structure, prioritizing storytelling over rigid rhyme.**
+    **Ensure the final piece feels cohesive, imaginative, and emotionally resonant.**
     """
 
     response = ollama.chat(model="gemma:2b", messages=[{"role": "user", "content": prompt}])
     lyrics = response["message"]["content"]
     return format_lyrics(lyrics)
+
 
 def format_lyrics(lyrics):
     """简单的格式化，将每行首字母大写"""
