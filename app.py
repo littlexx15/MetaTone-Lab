@@ -7,12 +7,15 @@ import ollama  # 用于歌词生成
 from streamlit_drawable_canvas import st_canvas
 
 # -----------------------------------------
-# 缓存加载 BLIP 模型（使用 large 版本）
+# 1️⃣ 缓存或初始化模型
 # -----------------------------------------
-@st.cache_resource
-def load_blip_model():
+@st.cache_resource  # 使用 Streamlit 缓存，避免每次重跑都加载模型
+def load_blip_large_model():
+    """
+    加载 blip-image-captioning-large 模型和处理器。
+    """
     device = "mps" if torch.backends.mps.is_available() else "cpu"
-    st.write(f"✅ Using device: {device}")
+    print(f"✅ Using device: {device}")
 
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
     blip_model = BlipForConditionalGeneration.from_pretrained(
@@ -21,48 +24,33 @@ def load_blip_model():
 
     return device, processor, blip_model
 
-device, processor, blip_model = load_blip_model()
+device, processor, blip_model = load_blip_large_model()
 
 # -----------------------------------------
-# 功能函数
+# 2️⃣ 核心函数：描述图像
 # -----------------------------------------
-def ensure_pil_image(image):
-    """确保 image 是 PIL.Image 类型"""
-    if isinstance(image, np.ndarray):
-        return Image.fromarray(image).convert("RGB")
-    return image.convert("RGB")
-
 def describe_image_with_blip(image):
-    """
-    使用 BLIP 生成更具象且富有想象力的画面描述，
-    提示语硬编码为：以诗意的风格描述，重点关注色彩、元素、情绪以及任何象征性或隐喻性的细节，
-    并打印生成的描述到控制台以便调试。
-    """
-    text_prompt = (
-        "Describe this painting in a poetic and imaginative style, focusing on colors, "
-        "elements, mood, and any symbolic or metaphorical details. Provide a short but specific caption."
-    )
-    inputs = processor(image, text=text_prompt, return_tensors="pt").to(device)
-
+    inputs = processor(image, return_tensors="pt").to(device)
     with torch.no_grad():
         caption_ids = blip_model.generate(
             **inputs,
-            max_length=100,
+            max_length=120,
             do_sample=True,
             top_p=0.9,
             top_k=40,
             temperature=1.0,
-            num_return_sequences=1
+            num_return_sequences=1,
+            num_beams=5,
+            early_stopping=True,
+            no_repeat_ngram_size=2
         )
-    caption = processor.decode(caption_ids[0], skip_special_tokens=True)
-    print(f"[BLIP Description] {caption}")  # 打印到控制台，便于调试
-    return caption
-
+    caption_str = processor.decode(caption_ids[0], skip_special_tokens=True)
+    print(f"[BLIP Large 描述] {caption_str}")
+    return caption_str
 
 def generate_lyrics(painting_description):
     """
     根据画面描述生成诗意歌词。
-    你可以修改 prompt 以得到更符合需求的歌词风格。
     """
     prompt = f"""
     Write a poetic song inspired by this description:
@@ -102,7 +90,7 @@ def format_lyrics(lyrics):
 # 3️⃣ Streamlit 界面
 # -----------------------------------------
 st.title("🎨 AI 绘画歌词生成器")
-st.write("在画布上自由绘画，点击“生成歌词”后即可获得描述与歌词 🎵")
+st.write("在画布上自由绘画，点击“生成歌词”后即可获得对画面的诗意描述与歌词 🎵")
 
 # 颜色选择器和笔刷大小
 brush_color = st.color_picker("选择画笔颜色", value="#000000")
@@ -124,9 +112,10 @@ canvas_result = st_canvas(
 # 生成歌词
 if st.button("🎶 生成歌词"):
     if canvas_result.image_data is not None:
+        # 将画布数据转为 PIL Image
         image = Image.fromarray((canvas_result.image_data * 255).astype(np.uint8)).convert("RGB")
 
-        # 使用 BLIP 生成描述
+        # 使用 BLIP large 生成描述
         painting_description = describe_image_with_blip(image)
 
         # 基于描述生成歌词
