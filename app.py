@@ -16,7 +16,7 @@ def load_blip_base_model():
     用于生成图像描述（基础版本）。
     """
     device = "mps" if torch.backends.mps.is_available() else "cpu"
-    st.write(f"✅ Using device: {device}")
+    # 去掉或注释掉这行： st.write(f"✅ Using device: {device}")
 
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
     blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(device)
@@ -33,6 +33,7 @@ def describe_image_with_blip(image):
     使用 Salesforce/blip-image-captioning-base 模型生成图像描述，
     直接输出模型的结果（不做颜色纠正），
     以观察基础模型对颜色和内容的识别效果。
+    生成的描述仅打印在终端。
     """
     inputs = processor(image, return_tensors="pt").to(device)
     with torch.no_grad():
@@ -53,46 +54,58 @@ def describe_image_with_blip(image):
 # -----------------------------------------
 def generate_lyrics(painting_description):
     """
-    根据图像描述生成更具故事性、情感深度和叙事结构的歌词。
+    根据图像描述生成诗意歌词，要求内容丰富、节奏流畅，避免重复，并具备清晰的歌曲结构。
     """
     prompt = f"""
-    You are a skilled lyricist and storyteller. Based on the following description, please write a poetic song:
+    Write a structured poetic song inspired by the following description:
     "{painting_description}"
     
-    In this song, apply the following advanced songwriting guidelines:
-    1. **Storytelling and Emotional Resonance**: Craft a clear narrative arc that can emotionally engage listeners. 
-       - Let the story unfold across verses, building tension or insight before the chorus. 
-       - Ensure the emotions are authentic, drawing on personal or universal truths.
-    2. **Imagery and Symbolism**: Use vivid imagery, metaphors, and similes to create a mental picture. 
-       - Let the visuals from the painting inform symbolic elements or hidden meanings in your lyrics.
-    3. **Song Structure**: Organize the song with verses, chorus, and optionally a bridge or pre-chorus.
-       - Verses: reveal details of the story or the emotional journey.
-       - Chorus: capture the main theme, repeated as a memorable hook.
-       - Bridge: provide a twist or moment of reflection.
-    4. **Rhyme and Musicality**: Aim for a rhythmic flow with subtle or slant rhymes.
-    5. **Balance with Melody**: Write lyrics that could be easily set to music, keeping lines concise.
-    6. **Focus on Emotional Essence**: Capture the painting's emotional core rather than describing it literally.
-    7. **Avoid Clichés**: Steer clear of overused phrases and generic words.
-    8. **Reference Color and Mood**: Let the painting’s color palette and mood influence the tone of the song.
-    
-    **Write in a loose poetic structure, prioritizing storytelling over rigid rhyme.**
-    **Ensure the final piece feels cohesive, imaginative, and emotionally resonant.**
+    **Structure:** The song must include [Verse], [Chorus], and optionally [Bridge].  
+    **Theme:** Capture deep emotions, vivid imagery, and a dynamic sense of movement.  
+    **Variation:** Each section should introduce new elements, avoiding repetitive phrases.  
+    **Rhythm & Flow:** Keep lines concise, naturally rhythmic, and easy to sing.  
+    **Contrast:** Verses should be introspective and descriptive, while the chorus should be impactful, emotionally intense, and memorable.  
+    **Musicality:** Ensure a lyrical structure that fits well with a melody, possibly incorporating rhyme or rhythmic elements.  
+    **Emotional Progression:** The song should build up, creating tension and resolution within its narrative.  
     """
     response = ollama.chat(model="gemma:2b", messages=[{"role": "user", "content": prompt}])
     lyrics = response["message"]["content"]
     return format_lyrics(lyrics)
 
+# -----------------------------------------
+# 4️⃣ 核心函数：生成歌曲名称
+# -----------------------------------------
+def generate_song_title(painting_description):
+    """
+    根据图像描述生成一个简洁而富有诗意的歌曲名称。
+    """
+    prompt = f"""
+    Based on the following description:
+    "{painting_description}"
+    
+    Provide a concise, creative, and poetic song title. Only output the title.
+    """
+    response = ollama.chat(model="gemma:2b", messages=[{"role": "user", "content": prompt}])
+    song_title = response["message"]["content"]
+    return song_title.strip()
+
+# -----------------------------------------
+# 5️⃣ 辅助函数：格式化歌词
+# -----------------------------------------
 def format_lyrics(lyrics):
-    """简单的格式化，将每行首字母大写"""
+    """
+    简单的格式化函数，将生成的歌词每行首字母大写，
+    并去除多余空行。
+    """
     lines = lyrics.split("\n")
     formatted_lines = [line.strip().capitalize() for line in lines if line.strip()]
     return "\n".join(formatted_lines)
 
 # -----------------------------------------
-# 4️⃣ Streamlit 界面
+# 6️⃣ Streamlit 界面
 # -----------------------------------------
-st.title("🎨 AI 绘画歌词生成器 (BLIP Base)")
-st.write("在画布上自由绘画，点击“生成歌词”后即可获得图像描述和诗意歌词。")
+st.title("MetaTone Lab")  # 将标题改为 "MetaTone Lab"
+st.write("在画布上自由绘画，点击“生成歌词”后即可获得图像描述（仅打印在终端）、歌曲名称和诗意歌词。")
 
 brush_color = st.color_picker("选择画笔颜色", value="#000000")
 brush_size = st.slider("画笔大小", 1, 50, value=5)
@@ -112,13 +125,15 @@ canvas_result = st_canvas(
 if st.button("🎶 生成歌词"):
     if canvas_result.image_data is not None:
         image = Image.fromarray((canvas_result.image_data * 255).astype(np.uint8)).convert("RGB")
-        # 使用 BLIP base 生成图像描述（无颜色纠正）
+        # 使用 BLIP base 生成图像描述（终端打印）
         painting_description = describe_image_with_blip(image)
+        # 基于描述生成歌曲名称
+        song_title = generate_song_title(painting_description)
         # 基于描述生成歌词
         lyrics = generate_lyrics(painting_description)
 
-        st.subheader("🖼 识别的绘画内容")
-        st.write(painting_description)
+        st.subheader("🎵 歌曲名称")
+        st.write(song_title)
         st.subheader("🎶 生成的歌词")
         st.write(lyrics)
     else:
