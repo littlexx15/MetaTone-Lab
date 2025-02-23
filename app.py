@@ -6,42 +6,99 @@ from transformers import BlipProcessor, BlipForConditionalGeneration
 import ollama  # 用于歌词生成
 from streamlit_drawable_canvas import st_canvas
 
-# -----------------------------------------
+# -------------------------------
+# 0️⃣ 页面布局与全局样式
+# -------------------------------
+st.set_page_config(
+    page_title="MetaTone Lab",
+    layout="wide",  # 宽屏布局
+)
+
+# 全局CSS，控制字体大小、标题居中、歌词滚动等
+st.markdown(
+    """
+    <style>
+    /* 调整整页左右边距，减少空白，改为1200px以适应普通屏幕 */
+    .main .block-container {
+        max-width: 1200px;
+        margin: auto;
+    }
+    /* 顶部主标题：居中 + 大字号 */
+    h1 {
+        text-align: center;
+        font-size: 36px !important;
+        margin-bottom: 0.2em;
+    }
+    /* 二级标题、说明等：稍微大些 */
+    .subheader-text {
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 0.6em;
+        margin-top: 0.2em;
+    }
+    /* 歌曲名称：加大一点字号 */
+    .song-title {
+        font-size: 24px;
+        font-weight: bold;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+    }
+    /* 歌词容器：固定高度 500px + 滚动条，和画布保持一致 */
+    .lyrics-container {
+        height: 500px;
+        overflow-y: auto;
+        padding-right: 1em;
+        margin-top: 10px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+    }
+    /* 歌词文本的行距、段落间距 */
+    .lyrics-container p {
+        line-height: 1.6;
+        margin-bottom: 0.8em;
+        margin-left: 0.5em;
+        margin-right: 0.5em;
+    }
+    /* 调整按钮的间距 */
+    .stButton {
+        margin-top: 1em;
+        margin-bottom: 1em;
+    }
+    /* 强制使slider的宽度=500px（与画布宽度相同） */
+    div[data-baseweb="slider"] {
+        width: 500px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# 顶部主标题
+st.markdown("<h1>MetaTone Lab</h1>", unsafe_allow_html=True)
+
+# -------------------------------
 # 1️⃣ 缓存或初始化模型：BLIP base
-# -----------------------------------------
+# -------------------------------
 @st.cache_resource
 def load_blip_base_model():
-    """
-    加载 Salesforce/blip-image-captioning-base 模型和处理器，
-    用于生成图像描述（基础版本）。
-    """
     device = "mps" if torch.backends.mps.is_available() else "cpu"
-    # 去掉或注释掉这行： st.write(f"✅ Using device: {device}")
-
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
     blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(device)
-
     return device, processor, blip_model
 
 device, processor, blip_model = load_blip_base_model()
 
-# -----------------------------------------
-# 2️⃣ 核心函数：描述图像（使用 BLIP base）
-# -----------------------------------------
+# -------------------------------
+# 2️⃣ 描述图像
+# -------------------------------
 def describe_image_with_blip(image):
-    """
-    使用 Salesforce/blip-image-captioning-base 模型生成图像描述，
-    直接输出模型的结果（不做颜色纠正），
-    以观察基础模型对颜色和内容的识别效果。
-    生成的描述仅打印在终端。
-    """
     inputs = processor(image, return_tensors="pt").to(device)
     with torch.no_grad():
         caption_ids = blip_model.generate(
             **inputs,
-            max_length=80,       # 允许足够细节描述
-            do_sample=False,     # 关闭随机采样，确保确定性输出
-            num_beams=5,         # 使用 Beam Search 提高输出质量
+            max_length=80,
+            do_sample=False,
+            num_beams=5,
             early_stopping=True,
             no_repeat_ngram_size=2
         )
@@ -49,13 +106,10 @@ def describe_image_with_blip(image):
     print(f"[BLIP Base 描述] {caption_str}")
     return caption_str
 
-# -----------------------------------------
-# 3️⃣ 核心函数：生成歌词
-# -----------------------------------------
+# -------------------------------
+# 3️⃣ 生成歌词
+# -------------------------------
 def generate_lyrics(painting_description):
-    """
-    根据图像描述生成诗意歌词，要求内容丰富、节奏流畅，避免重复，并具备清晰的歌曲结构。
-    """
     prompt = f"""
     Write a structured poetic song inspired by the following description:
     "{painting_description}"
@@ -72,69 +126,80 @@ def generate_lyrics(painting_description):
     lyrics = response["message"]["content"]
     return format_lyrics(lyrics)
 
-# -----------------------------------------
-# 4️⃣ 核心函数：生成歌曲名称
-# -----------------------------------------
+# -------------------------------
+# 4️⃣ 生成歌曲名称
+# -------------------------------
 def generate_song_title(painting_description):
-    """
-    根据图像描述生成一个简洁而富有诗意的歌曲名称。
-    """
     prompt = f"""
     Based on the following description:
     "{painting_description}"
     
-    Provide a concise, creative, and poetic song title. Only output the title.
+    Provide a concise, creative, and poetic song title. Just output the title, with no extra words or disclaimers.
     """
     response = ollama.chat(model="gemma:2b", messages=[{"role": "user", "content": prompt}])
     song_title = response["message"]["content"]
     return song_title.strip()
 
-# -----------------------------------------
-# 5️⃣ 辅助函数：格式化歌词
-# -----------------------------------------
+# -------------------------------
+# 5️⃣ 格式化歌词
+# -------------------------------
 def format_lyrics(lyrics):
-    """
-    简单的格式化函数，将生成的歌词每行首字母大写，
-    并去除多余空行。
-    """
-    lines = lyrics.split("\n")
-    formatted_lines = [line.strip().capitalize() for line in lines if line.strip()]
-    return "\n".join(formatted_lines)
+    lines = [line.strip() for line in lyrics.split("\n") if line.strip()]
+    lines = [l[0].upper() + l[1:] if l else "" for l in lines]
+    joined = "\n\n".join(lines)
+    return joined
 
-# -----------------------------------------
-# 6️⃣ Streamlit 界面
-# -----------------------------------------
-st.title("MetaTone Lab")  # 将标题改为 "MetaTone Lab"
-st.write("在画布上自由绘画，点击“生成歌词”后即可获得图像描述（仅打印在终端）、歌曲名称和诗意歌词。")
+# -------------------------------
+# 6️⃣ 主布局
+# -------------------------------
+col_left, col_right = st.columns([1.4, 1.6], gap="medium")
 
-brush_color = st.color_picker("选择画笔颜色", value="#000000")
-brush_size = st.slider("画笔大小", 1, 50, value=5)
+# 左侧：绘画区域
+with col_left:
+    st.markdown("<div class='subheader-text'>在这里画画</div>", unsafe_allow_html=True)
+    st.write("选择画笔颜色和笔刷大小，自由绘制创意画面。")
 
-canvas_result = st_canvas(
-    fill_color="rgba(255, 255, 255, 0)",
-    stroke_width=brush_size,
-    stroke_color=brush_color,
-    background_color="white",
-    update_streamlit=True,
-    width=512,
-    height=512,
-    drawing_mode="freedraw",
-    key="canvas",
-)
+    brush_color = st.color_picker("画笔颜色", value="#000000")
+    brush_size = st.slider("画笔大小", 1, 50, value=5)
 
-if st.button("🎶 生成歌词"):
-    if canvas_result.image_data is not None:
-        image = Image.fromarray((canvas_result.image_data * 255).astype(np.uint8)).convert("RGB")
-        # 使用 BLIP base 生成图像描述（终端打印）
-        painting_description = describe_image_with_blip(image)
-        # 基于描述生成歌曲名称
-        song_title = generate_song_title(painting_description)
-        # 基于描述生成歌词
-        lyrics = generate_lyrics(painting_description)
+    # 画布 500×500
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 255, 255, 0)",
+        stroke_width=brush_size,
+        stroke_color=brush_color,
+        background_color="white",
+        update_streamlit=True,
+        width=550,
+        height=550,
+        drawing_mode="freedraw",
+        key="canvas",
+    )
 
-        st.subheader("🎵 歌曲名称")
-        st.write(song_title)
-        st.subheader("🎶 生成的歌词")
-        st.write(lyrics)
-    else:
-        st.error("请先在画布上绘制内容！")
+# 右侧：生成结果
+with col_right:
+    st.markdown("<div class='subheader-text'>生成结果</div>", unsafe_allow_html=True)
+    st.write("完成绘画后，点击下方按钮生成歌曲名称与歌词。")
+
+    if st.button("🎶 生成歌词"):
+        if canvas_result.image_data is not None:
+            image = Image.fromarray((canvas_result.image_data * 255).astype(np.uint8)).convert("RGB")
+            # 生成图像描述（仅在终端打印）
+            painting_description = describe_image_with_blip(image)
+            # 生成歌曲名称
+            song_title = generate_song_title(painting_description)
+            # 生成歌词
+            lyrics = generate_lyrics(painting_description)
+
+            st.markdown("**歌曲名称：**", unsafe_allow_html=True)
+            st.markdown(f"<div class='song-title'>{song_title}</div>", unsafe_allow_html=True)
+
+            st.markdown("**生成的歌词：**", unsafe_allow_html=True)
+            # 将换行符替换成 <br>
+            lyrics_html = lyrics.replace("\n", "<br>")
+            # 高度固定 500px，和画布相同
+            st.markdown(
+                f"<div class='lyrics-text lyrics-container'><p>{lyrics_html}</p></div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.error("请先在左侧画布上绘制内容！")
