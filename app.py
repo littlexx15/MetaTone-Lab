@@ -134,7 +134,7 @@ def generate_song_title(painting_description):
     Based on the following description:
     "{painting_description}"
     
-    Provide a concise, creative, and poetic song title. Just output the title, with no extra words or disclaimers.
+    Provide a concise, creative, and poetic song title. Only output the title, with no extra words or disclaimers.
     """
     response = ollama.chat(model="gemma:2b", messages=[{"role": "user", "content": prompt}])
     song_title = response["message"]["content"]
