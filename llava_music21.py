@@ -6,9 +6,23 @@ from streamlit_drawable_canvas import st_canvas
 import random
 import music21
 import tempfile
+import os
+
+from midi2audio import FluidSynth  # 用于将 MIDI 转换成 WAV
 
 from util.image_helper import create_temp_file
 from util.llm_helper import analyze_image_file, stream_parser
+
+# 在这里填好你的 SoundFont 路径（如果要播放音频）
+SOUNDFONT_PATH = "/Users/xiangxiaoxin/Documents/GitHub/FaceTune/soundfonts/VocalsPapel.sf2"
+
+# ----------------------------------------
+# 使用 session_state 存储当前生成的歌词和标题
+# ----------------------------------------
+if "lyrics" not in st.session_state:
+    st.session_state["lyrics"] = None
+if "song_title" not in st.session_state:
+    st.session_state["song_title"] = None
 
 # -------------------------------
 # 0️⃣ 页面布局与全局样式
@@ -68,15 +82,12 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.markdown("<h1>MetaTone Lab</h1>", unsafe_allow_html=True)
+st.markdown("<h1>MetaTone 实验室</h1>", unsafe_allow_html=True)
 
 # -------------------------------
-# 1️⃣ 生成歌词
+# 1️⃣ 生成歌词（调用 llava:7b）
 # -------------------------------
 def generate_lyrics_with_ollama(image: Image.Image) -> str:
-    """
-    将绘制的图像保存为临时文件，然后调用 llava:7b 模型生成结构化歌词。
-    """
     temp_path = create_temp_file(image)
     prompt = """
 You are a creative songwriting assistant.
@@ -99,17 +110,13 @@ Now here is the image:
     )
     parsed = stream_parser(stream)
     lyrics = "".join(parsed).strip()
-    # 如果模型返回的字符串首尾有双引号，则去掉
-    lyrics = lyrics.strip('"')
+    lyrics = lyrics.strip('"')  # 去掉首尾引号
     return lyrics
 
 # -------------------------------
-# 2️⃣ 生成歌曲标题
+# 2️⃣ 生成歌曲标题（调用 llava:7b）
 # -------------------------------
 def generate_song_title(image: Image.Image) -> str:
-    """
-    将绘制的图像保存为临时文件，然后调用 llava:7b 模型生成歌曲标题。
-    """
     temp_path = create_temp_file(image)
     prompt = """
 Provide a concise, creative, and poetic song title. Only output the title, with no extra words or disclaimers.
@@ -128,50 +135,56 @@ Provide a concise, creative, and poetic song title. Only output the title, with 
 # 3️⃣ 格式化歌词
 # -------------------------------
 def format_text(text: str) -> str:
-    """
-    去除多余空行，并保证每行首字母大写。
-    """
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     lines = [l[0].upper() + l[1:] if l else "" for l in lines]
     return "\n\n".join(lines)
 
 # -------------------------------
-# 4️⃣ 为歌词生成随机旋律的 MIDI
+# 4️⃣ 生成随机旋律的 MIDI
 # -------------------------------
 def generate_random_melody(lyrics: str) -> bytes:
-    """
-    将多行歌词拆分，每行分配一个随机音高，生成 MIDI 文件并返回其二进制内容。
-    """
-    # 1. 拆分歌词成行
     lines = [l.strip() for l in lyrics.split("\n") if l.strip()]
-
-    # 2. 创建 music21 的 Stream
     s = music21.stream.Stream()
-
-    # 3. 定义一个音阶，用来随机挑选音高
     scale_notes = ["C4", "D4", "E4", "F4", "G4", "A4", "B4"]
 
     for line in lines:
-        # 为这一行歌词分配一个随机音高
         pitch = random.choice(scale_notes)
-        # 创建一个 note，时长先固定为 1.0 四分音符
         n = music21.note.Note(pitch, quarterLength=1.0)
-        # 将这一行歌词放到 note 的 lyric 字段
         n.lyric = line
         s.append(n)
 
-    # 4. 写到临时文件中
     with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as tmp:
         midi_path = tmp.name
     s.write("midi", fp=midi_path)
 
-    # 5. 读出二进制内容并返回
     with open(midi_path, "rb") as f:
         midi_bytes = f.read()
     return midi_bytes
 
 # -------------------------------
-# 5️⃣ 主布局：左侧绘画，右侧生成结果
+# 5️⃣ MIDI 转 WAV
+# -------------------------------
+def midi_to_wav(midi_bytes: bytes) -> bytes:
+    with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as tmp_midi:
+        tmp_midi.write(midi_bytes)
+        midi_path = tmp_midi.name
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
+        wav_path = tmp_wav.name
+
+    fs = FluidSynth(sound_font=SOUNDFONT_PATH)
+    fs.midi_to_audio(midi_path, wav_path)
+
+    with open(wav_path, "rb") as f:
+        wav_data = f.read()
+
+    # 清理临时文件
+    os.remove(midi_path)
+    os.remove(wav_path)
+    return wav_data
+
+# -------------------------------
+# 6️⃣ Streamlit 主布局
 # -------------------------------
 col_left, col_right = st.columns([1.4, 1.6], gap="medium")
 
@@ -193,43 +206,53 @@ with col_left:
         key="canvas",
     )
 
-# 右侧：生成结果区域
+# 右侧：生成结果
 with col_right:
     st.markdown("<div class='subheader-text'>生成结果</div>", unsafe_allow_html=True)
-    st.write("完成绘画后，点击下方按钮生成歌曲标题与歌词。")
+    st.write("先生成歌曲标题和歌词，再选择是否生成演唱。")
 
-    if st.button("🎶 生成歌曲"):
+    # -- 按钮：生成歌词 --
+    if st.button("🎶 生成歌词"):
         if canvas_result.image_data is not None:
-            # 将绘制结果转换为 PIL Image 对象
+            # 从画布获取图像
             image = Image.fromarray((canvas_result.image_data * 255).astype(np.uint8)).convert("RGB")
             
-            # 调用 llava:7b 生成歌曲标题和歌词
-            song_title = generate_song_title(image)
+            # 调用 llava:7b 生成标题 & 歌词
+            title = generate_song_title(image)
             raw_lyrics = generate_lyrics_with_ollama(image)
-            
-            # 对歌词进行格式化
             lyrics = format_text(raw_lyrics)
-            
-            # 展示结果
-            st.markdown("**歌曲标题：**", unsafe_allow_html=True)
-            st.markdown(f"<div class='song-title'>{song_title}</div>", unsafe_allow_html=True)
 
-            st.markdown("**生成的歌词：**", unsafe_allow_html=True)
-            lyrics_html = lyrics.replace("\n", "<br>")
-            st.markdown(
-                f"<div class='lyrics-text lyrics-container'><p>{lyrics_html}</p></div>",
-                unsafe_allow_html=True
-            )
-
-            # 额外：为歌词生成一个简单随机旋律的 MIDI
-            midi_bytes = generate_random_melody(lyrics)
-            st.markdown("#### 随机旋律 MIDI 文件")
-            st.download_button(
-                label="下载随机旋律 MIDI",
-                data=midi_bytes,
-                file_name="random_melody.mid",
-                mime="audio/midi"
-            )
-
+            # 存到 session_state
+            st.session_state["song_title"] = title
+            st.session_state["lyrics"] = lyrics
         else:
             st.error("请先在左侧画布上绘制内容！")
+
+    # 如果已经生成了标题和歌词，就在这里显示出来
+    if st.session_state["song_title"] and st.session_state["lyrics"]:
+        st.markdown("**歌曲标题：**", unsafe_allow_html=True)
+        st.markdown(f"<div class='song-title'>{st.session_state['song_title']}</div>", unsafe_allow_html=True)
+
+        st.markdown("**生成的歌词：**", unsafe_allow_html=True)
+        lyrics_html = st.session_state["lyrics"].replace("\n", "<br>")
+        st.markdown(
+            f"<div class='lyrics-text lyrics-container'><p>{lyrics_html}</p></div>",
+            unsafe_allow_html=True
+        )
+
+        st.markdown("---")
+        st.markdown("### 歌曲已生成，点击下方按钮生成演唱：")
+        
+        # -- 按钮：生成演唱 --
+        if st.button("🎤 生成演唱"):
+            midi_bytes = generate_random_melody(st.session_state["lyrics"])
+            wav_data = midi_to_wav(midi_bytes)
+            st.audio(wav_data, format="audio/wav")
+
+            # 可选：下载按钮
+            st.download_button(
+                label="下载 WAV 音频",
+                data=wav_data,
+                file_name="random_melody.wav",
+                mime="audio/wav"
+            )
