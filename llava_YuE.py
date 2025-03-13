@@ -1,13 +1,18 @@
 import os
 os.environ["TORCH_FLASH_ATTENTION_DISABLE"] = "1"
 os.environ["FLASH_ATTENTION_DISABLE"] = "1"
-# 确保这几行代码是文件中最前面的操作，然后再导入其他模块（如 transformers、torch 等）。
-# 这样可以确保在 Transformers 加载之前，就已经禁用了 FlashAttention2
+
+# 通过猴子补丁将检测函数置空，避免启用 FlashAttention2
+try:
+    import transformers.modeling_utils as modeling_utils
+    modeling_utils._check_and_enable_flash_attn_2 = lambda *args, **kwargs: None
+except Exception as e:
+    print("Monkey patch for flash attention failed:", e)
+
 import streamlit as st
 st.set_page_config(page_title="MetaTone Lab", layout="wide")
 
 import sys
-import os
 import subprocess
 import tempfile
 import glob
@@ -96,10 +101,6 @@ def format_text(text: str) -> str:
 
 # =============== 新增：YuE 推理函数 ===============
 def yue_infer(lyrics: str) -> bytes:
-    """
-    使用 YuE（或 YuEGP）的推理脚本从歌词生成完整歌曲音频。
-    注意：请确保以下路径与你的实际环境匹配。
-    """
     # 推理脚本路径（使用原始字符串避免转义问题）
     YUE_INFER_SCRIPT = r"C:\Users\24007516\GitHub\YuE-for-windows\inference\infer.py"
     # 使用的 Python 可执行文件路径（如果当前环境中已激活，建议使用 sys.executable）
@@ -132,6 +133,11 @@ def yue_infer(lyrics: str) -> bytes:
         "--max_new_tokens", "3000"
     ]
     
+    # 复制当前环境变量，并添加禁用 FlashAttention2 的设置
+    env = os.environ.copy()
+    env["TORCH_FLASH_ATTENTION_DISABLE"] = "1"
+    env["FLASH_ATTENTION_DISABLE"] = "1"
+    
     try:
         result = subprocess.run(
             cmd,
@@ -139,7 +145,8 @@ def yue_infer(lyrics: str) -> bytes:
             stderr=subprocess.PIPE,
             text=True,
             check=True,
-            cwd=r"C:\Users\24007516\GitHub\YuE-for-windows"  # 使用原始字符串设置工作目录
+            cwd=r"C:\Users\24007516\GitHub\YuE-for-windows",
+            env=env  # 传递修改后的环境变量
         )
         st.write("YuE 推理输出:", result.stdout)
     except subprocess.CalledProcessError as e:
@@ -159,6 +166,7 @@ def yue_infer(lyrics: str) -> bytes:
     # shutil.rmtree(temp_out_dir)
     
     return audio_data
+
 
 # =============== 7) Streamlit 主 UI ===============
 col_left, col_right = st.columns([1.4, 1.6], gap="medium")
