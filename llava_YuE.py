@@ -1,3 +1,8 @@
+import os
+os.environ["TORCH_FLASH_ATTENTION_DISABLE"] = "1"
+os.environ["FLASH_ATTENTION_DISABLE"] = "1"
+# 确保这几行代码是文件中最前面的操作，然后再导入其他模块（如 transformers、torch 等）。
+# 这样可以确保在 Transformers 加载之前，就已经禁用了 FlashAttention2
 import streamlit as st
 st.set_page_config(page_title="MetaTone Lab", layout="wide")
 
@@ -14,6 +19,7 @@ from streamlit_drawable_canvas import st_canvas
 import random
 
 print("Python executable:", sys.executable)
+
 
 # =============== 你的辅助函数 ===============
 from util.image_helper import create_temp_file
@@ -88,32 +94,33 @@ def format_text(text: str) -> str:
     lines = [l[0].upper() + l[1:] if l else "" for l in lines]
     return "\n\n".join(lines)
 
-# 这里原先的 4、5、6 部分（生成 MIDI、转换 WAV、So‑VITS‑SVC 推理）均可省略，
-# 因为我们将使用 YuE 直接从文本生成完整歌曲。
-
 # =============== 新增：YuE 推理函数 ===============
 def yue_infer(lyrics: str) -> bytes:
     """
-    使用 YuE（或 YuEGP）的推理脚本从文本生成完整歌曲。
+    使用 YuE（或 YuEGP）的推理脚本从歌词生成完整歌曲音频。
+    注意：请确保以下路径与你的实际环境匹配。
     """
-    YUE_INFER_PY = "/Users/xiangxiaoxin/Documents/GitHub/YuEGP/inference/infer.py"
+    # 推理脚本路径（使用原始字符串避免转义问题）
+    YUE_INFER_SCRIPT = r"C:\Users\24007516\GitHub\YuE-for-windows\inference\infer.py"
+    # 使用的 Python 可执行文件路径（如果当前环境中已激活，建议使用 sys.executable）
+    PYTHON_EXECUTABLE = r"C:\ProgramData\anaconda3\envs\yue_env\python.exe"
+    # 创建临时输出目录
+    temp_out_dir = tempfile.mkdtemp(prefix="yue_output_")
     
-    # 创建一个临时目录作为输出目录
-    temp_out_dir = tempfile.mkdtemp()
-    
-    # 将生成的歌词写入一个临时文件
+    # 将生成的歌词写入临时文件
     lyrics_file = os.path.join(temp_out_dir, "lyrics.txt")
-    with open(lyrics_file, "w") as f:
+    with open(lyrics_file, "w", encoding="utf-8") as f:
         f.write(lyrics)
     
-    # 如果需要指定 genre 提示，可以创建一个简单的 genre 文件
+    # 创建一个简单的 genre 文件（你可以根据需要修改内容）
     genre_file = os.path.join(temp_out_dir, "genre.txt")
-    with open(genre_file, "w") as f:
-        f.write("pop upbeat vocal electronic")  # 可根据需要修改
+    with open(genre_file, "w", encoding="utf-8") as f:
+        f.write("pop upbeat vocal electronic")
     
+    # 构造命令行参数
     cmd = [
-        "/opt/anaconda3/envs/yue/bin/python",
-        "/Users/xiangxiaoxin/Documents/GitHub/YuEGP/inference/infer.py",
+        PYTHON_EXECUTABLE,
+        YUE_INFER_SCRIPT,
         "--stage1_model", "m-a-p/YuE-s1-7B-anneal-en-cot",
         "--stage2_model", "m-a-p/YuE-s2-1B-general",
         "--genre_txt", genre_file,
@@ -132,7 +139,7 @@ def yue_infer(lyrics: str) -> bytes:
             stderr=subprocess.PIPE,
             text=True,
             check=True,
-            cwd="/Users/xiangxiaoxin/Documents/GitHub/YuEGP"  # 指定工作目录
+            cwd=r"C:\Users\24007516\GitHub\YuE-for-windows"  # 使用原始字符串设置工作目录
         )
         st.write("YuE 推理输出:", result.stdout)
     except subprocess.CalledProcessError as e:
@@ -140,6 +147,7 @@ def yue_infer(lyrics: str) -> bytes:
         st.error(e.stderr)
         raise
     
+    # 搜索输出目录中的音频文件（支持 .wav 和 .mp3 格式）
     wav_files = glob.glob(os.path.join(temp_out_dir, "*.wav")) + glob.glob(os.path.join(temp_out_dir, "*.mp3"))
     if not wav_files:
         raise FileNotFoundError(f"未在输出目录找到生成的音频文件。输出目录内容：{os.listdir(temp_out_dir)}")
@@ -147,8 +155,10 @@ def yue_infer(lyrics: str) -> bytes:
     with open(out_audio_path, "rb") as f:
         audio_data = f.read()
     
+    # 可选：完成后删除临时目录（如果不需要保留中间文件）
+    # shutil.rmtree(temp_out_dir)
+    
     return audio_data
-
 
 # =============== 7) Streamlit 主 UI ===============
 col_left, col_right = st.columns([1.4, 1.6], gap="medium")
@@ -197,7 +207,10 @@ with col_right:
         if not st.session_state["lyrics"]:
             st.error("请先生成歌词！")
         else:
-            # 调用 YuE 推理函数，从文本直接生成完整歌曲音频
-            final_audio = yue_infer(st.session_state["lyrics"])
-            st.audio(final_audio, format="audio/wav")
-            st.download_button("下载完整歌曲", final_audio, "full_song.wav", mime="audio/wav")
+            try:
+                final_audio = yue_infer(st.session_state["lyrics"])
+                st.audio(final_audio, format="audio/wav")
+                st.download_button("下载完整歌曲", final_audio, "full_song.wav", mime="audio/wav")
+            except Exception as e:
+                st.error("生成完整歌曲时出错:")
+                st.error(str(e))
