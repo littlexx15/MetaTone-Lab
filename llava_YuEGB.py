@@ -91,7 +91,7 @@ def yue_infer(lyrics: str) -> bytes:
     Subprocess output is not printed to the UI.
     """
     # Paths to the inference script and Python executable
-    YUE_INFER_SCRIPT = r"C:\Users\24007516\GitHub\YuE-for-windows\inference\infer.py"
+    YUE_INFER_SCRIPT = r"C:\Users\24007516\GitHub\YuEGP\inference\infer.py"
     PYTHON_EXECUTABLE = r"C:\ProgramData\anaconda3\envs\yue4\python.exe"
     
     # Create a temporary output directory
@@ -122,10 +122,13 @@ def yue_infer(lyrics: str) -> bytes:
         "--max_new_tokens", "3000"
     ]
     
-    # Prepare environment variables for the subprocess (CUDA settings)
+    # Set CUDA environment variables
     env = os.environ.copy()
     env["CUDA_HOME"] = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.5"
     env["PATH"] = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.5\bin;" + env["PATH"]
+    
+    # Set the working directory to the folder where infer.py lives:
+    cwd = os.path.dirname(YUE_INFER_SCRIPT)
     
     try:
         result = subprocess.run(
@@ -134,12 +137,12 @@ def yue_infer(lyrics: str) -> bytes:
             stderr=subprocess.PIPE,
             text=True,
             check=True,
-            cwd=r"C:\Users\24007516\GitHub\YuE-for-windows",
+            cwd=cwd,  # Run in the same directory as infer.py
             env=env
         )
-        # We do NOT display result.stdout in the Streamlit UI
     except subprocess.CalledProcessError as e:
-        st.error("YuE inference failed with error message:")
+        st.error("YuE inference failed. Please check your configuration and try again.")
+        st.error("Subprocess error output:")
         st.error(e.stderr)
         raise
     
@@ -152,7 +155,7 @@ def yue_infer(lyrics: str) -> bytes:
     with open(out_audio_path, "rb") as f:
         audio_data = f.read()
     
-    # Optionally remove the temporary directory
+    # Optionally, remove the temporary directory afterward:
     # shutil.rmtree(temp_out_dir)
     
     return audio_data
@@ -202,12 +205,11 @@ with col_right:
         if not st.session_state["lyrics"]:
             st.error("Please generate lyrics first!")
         else:
-            try:
-                final_audio = yue_infer(st.session_state["lyrics"])
-                # Audio playback
-                st.audio(final_audio, format="audio/wav")
-                # Download button
-                st.download_button("Download Full Song", final_audio, "full_song.wav", mime="audio/wav")
-            except Exception as e:
-                st.error("Error generating full song:")
-                st.error(str(e))
+            with st.spinner("Generating full song..."):
+                try:
+                    final_audio = yue_infer(st.session_state["lyrics"])
+                except Exception as e:
+                    st.error("Error generating full song. Please check the logs.")
+                    raise
+            st.audio(final_audio, format="audio/wav")
+            st.download_button("Download Full Song", final_audio, "full_song.wav", mime="audio/wav")
