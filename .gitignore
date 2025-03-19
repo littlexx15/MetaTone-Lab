@@ -209,4 +209,3 @@ cython_debug/
 # Exceptions 
 !README.md
 !demo_media/*.*
-
