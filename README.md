@@ -118,16 +118,6 @@ cd ../AI-4-Media-Project-XiaoxinXiang
 pip install -r requirements.txt
 ```
 
-Sample `requirements.txt` includes:
-
-```nginx
-streamlit
-streamlit-drawable-canvas
-duck
-numpy
-# Other required dependencies
-```
-
 ---
 
 ## 7. Launch the Project
