@@ -13,28 +13,21 @@ from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 import random
 
-print("Python executable:", sys.executable)
+# Environment variables for YuE inference
+YUE_PYTHON   = os.environ.get("YUE_PYTHON",   "python")
+YUE_INFER_PY = os.environ.get("YUE_INFER_PY", "yueForWindows/inference/infer.py")
+YUE_CWD      = os.environ.get("YUE_CWD",      "yueForWindows")
 
-# 在这里用环境变量来取得用户的 Python 和 infer.py 路径
-#   - YUE_PYTHON   -> 指向“专门给 yueForWindows 准备的 Python”（可能是某个 conda env 或 venv）
-#   - YUE_INFER_PY -> 指向用户下载的 yueForWindows 目录下的 "inference/infer.py"
-#   - YUE_CWD      -> 如果一定需要在 yueForWindows 目录下执行，指定它的工作目录
-YUE_PYTHON   = os.environ.get("YUE_PYTHON",   "python")  # 如果用户没设置，默认用 "python"
-YUE_INFER_PY = os.environ.get("YUE_INFER_PY", "yueForWindows/inference/infer.py") 
-YUE_CWD      = os.environ.get("YUE_CWD",      "yueForWindows") 
-
-# =============== 辅助函数 ===============
 from util.image_helper import create_temp_file
 from util.llm_helper import analyze_image_file, stream_parser
 
-
-# =============== session_state 存储歌词和标题 ===============
+# Store lyrics and title in session state
 if "lyrics" not in st.session_state:
     st.session_state["lyrics"] = None
 if "song_title" not in st.session_state:
     st.session_state["song_title"] = None
 
-# =============== 页面样式（仅调用一次）===============
+# Page styling
 st.markdown(
     """
     <style>
@@ -52,9 +45,8 @@ st.markdown(
 )
 st.markdown("<h1>MetaTone Lab</h1>", unsafe_allow_html=True)
 
-# =============== 1) 生成歌词 (调用 llava:7b) ===============
+# 1) Generate lyrics using LLava:7B
 def generate_lyrics_with_ollama(image: Image.Image) -> str:
-    """调用 llava:7b 模型，根据图像生成英文歌词。"""
     temp_path = create_temp_file(image)
     prompt = """
 You are a creative songwriting assistant.
@@ -75,9 +67,8 @@ Now here is the image:
     lyrics = "".join(parsed).strip()
     return lyrics.strip('"')
 
-# =============== 2) 生成歌曲标题 (调用 llava:7b) ===============
+# 2) Generate song title using LLava:7B
 def generate_song_title(image: Image.Image) -> str:
-    """调用 llava:7b 模型，为图像生成歌曲标题。"""
     temp_path = create_temp_file(image)
     prompt = """
 Provide a concise, creative, and poetic song title. Only output the title, with no extra words or disclaimers.
@@ -87,34 +78,28 @@ Provide a concise, creative, and poetic song title. Only output the title, with 
     title = "".join(parsed).strip()
     return title.strip('"')
 
-# =============== 3) 格式化歌词 ===============
+# 3) Format lyrics for display
 def format_text(text: str) -> str:
-    """去除多余空行，并保证每行首字母大写。"""
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     lines = [l[0].upper() + l[1:] if l else "" for l in lines]
     return "\n\n".join(lines)
 
-# =============== YuE 推理函数 ===============
+# 4) Run YuE inference to generate music from text
 def yue_infer(lyrics: str) -> bytes:
-    """
-    使用 YuE（或 YuEGP）的推理脚本从文本生成完整歌曲。
-    """
-    
-    # 1) 创建临时目录
+    # Create temp output directory
     temp_out_dir = tempfile.mkdtemp()
     
-    # 2) 将生成的歌词写入一个临时文件
+    # Write lyrics
     lyrics_file = os.path.join(temp_out_dir, "lyrics.txt")
     with open(lyrics_file, "w") as f:
         f.write(lyrics)
     
-    # 3) 指定 genre 提示
+    # Specify simple genre prompt
     genre_file = os.path.join(temp_out_dir, "genre.txt")
     with open(genre_file, "w") as f:
         f.write("pop upbeat vocal electronic") 
 
-    # 4) 拼装命令
-    #    用上面通过环境变量获取的 YUE_PYTHON & YUE_INFER_PY
+    # Build command
     cmd = [
         YUE_PYTHON,
         YUE_INFER_PY,
@@ -129,7 +114,7 @@ def yue_infer(lyrics: str) -> bytes:
         "--max_new_tokens", "3000"
     ]
 
-    # 5) 运行子进程
+    # Run YuE inference
     try:
         result = subprocess.run(
             cmd,
@@ -137,33 +122,31 @@ def yue_infer(lyrics: str) -> bytes:
             stderr=subprocess.PIPE,
             text=True,
             check=True,
-            cwd=YUE_CWD  # 指定工作目录
+            cwd=YUE_CWD
         )
-        st.write("YuE 推理输出:", result.stdout)
+        st.write("YuE inference output:", result.stdout)
     except subprocess.CalledProcessError as e:
-        st.error("YuE 推理失败，错误信息:")
+        st.error("YuE inference failed:")
         st.error(e.stderr)
         raise
 
-    # 6) 找到生成的音频，读到内存里返回给前端
+    # Find and return generated audio
     wav_files = glob.glob(os.path.join(temp_out_dir, "*.wav")) + glob.glob(os.path.join(temp_out_dir, "*.mp3"))
     if not wav_files:
-        raise FileNotFoundError(f"未在输出目录找到生成的音频文件。输出目录内容：{os.listdir(temp_out_dir)}")
+        raise FileNotFoundError(f"No audio found in {temp_out_dir}. Contents: {os.listdir(temp_out_dir)}")
     out_audio_path = wav_files[0]
     with open(out_audio_path, "rb") as f:
         audio_data = f.read()
-    
     return audio_data
 
-
-# =============== 7) Streamlit 主 UI ===============
+# 5) Streamlit UI
 col_left, col_right = st.columns([1.4, 1.6], gap="medium")
 
 with col_left:
-    st.markdown("**在这里画画**", unsafe_allow_html=True)
-    st.write("选择画笔颜色和笔刷大小，自由绘制创意画面。")
-    brush_color = st.color_picker("画笔颜色", value="#000000")
-    brush_size = st.slider("画笔大小", 1, 50, value=5)
+    st.markdown("**Draw here**", unsafe_allow_html=True)
+    st.write("Select color/size and sketch on the canvas.")
+    brush_color = st.color_picker("Brush color", value="#000000")
+    brush_size = st.slider("Brush size", 1, 50, value=5)
     canvas_result = st_canvas(
         fill_color="rgba(255, 255, 255, 0)",
         stroke_width=brush_size,
@@ -177,13 +160,13 @@ with col_left:
     )
 
 with col_right:
-    st.markdown("**生成结果**", unsafe_allow_html=True)
-    st.write("完成绘画后，将生成歌词并调用 YuE 直接生成完整歌曲。")
+    st.markdown("**Generate results**", unsafe_allow_html=True)
+    st.write("After drawing, generate lyrics and have YuE synthesize a full song.")
 
-    # 生成歌词和标题
-    if st.button("生成歌词"):
+    # Generate lyrics and song title
+    if st.button("Generate lyrics"):
         if canvas_result.image_data is None:
-            st.error("请先在左侧画布上绘制内容！")
+            st.error("Please sketch something first!")
         else:
             image = Image.fromarray((canvas_result.image_data * 255).astype(np.uint8)).convert("RGB")
             title = generate_song_title(image)
@@ -192,18 +175,17 @@ with col_right:
             st.session_state["song_title"] = title
             st.session_state["lyrics"] = lyrics
 
-    # 显示生成的歌词和标题
+    # Display title and lyrics
     if st.session_state["song_title"] and st.session_state["lyrics"]:
-        st.markdown(f"**歌曲标题：** {st.session_state['song_title']}", unsafe_allow_html=True)
+        st.markdown(f"**Song Title:** {st.session_state['song_title']}", unsafe_allow_html=True)
         lyrics_html = st.session_state["lyrics"].replace("\n", "<br>")
         st.markdown(f"<div class='lyrics-container'><p>{lyrics_html}</p></div>", unsafe_allow_html=True)
 
-    # 使用 YuE 生成完整歌曲
-    if st.button("生成完整歌曲"):
+    # Generate full song from lyrics
+    if st.button("Generate complete song"):
         if not st.session_state["lyrics"]:
-            st.error("请先生成歌词！")
+            st.error("Please generate lyrics first!")
         else:
-            # 调用 YuE 推理函数，从文本直接生成完整歌曲音频
             final_audio = yue_infer(st.session_state["lyrics"])
             st.audio(final_audio, format="audio/wav")
-            st.download_button("下载完整歌曲", final_audio, "full_song.wav", mime="audio/wav")
+            st.download_button("Download Full Song", final_audio, "full_song.wav", mime="audio/wav")
