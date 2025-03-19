@@ -4,7 +4,7 @@ from PIL import Image
 
 def create_temp_file(pil_image: Image.Image) -> str:
     """
-    将一个 PIL Image 对象保存到临时 PNG 文件，并返回文件路径。
+    Saves a PIL Image object to a temporary PNG file and returns the file path.
     """
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
         pil_image.save(tmp, format="PNG")
@@ -13,10 +13,11 @@ def create_temp_file(pil_image: Image.Image) -> str:
 
 def get_image_bytes(image_file: str) -> bytes:
     """
-    打开指定路径的图片文件，并返回其字节数据。
+    Opens the image file at the specified path and returns its byte data.
     """
     image = Image.open(image_file)
     with io.BytesIO() as output:
-        image.save(output, format="PNG")  # 可根据需求改成 "JPEG" 等
+        # Change format to "JPEG" or others as needed
+        image.save(output, format="PNG")
         image_bytes = output.getvalue()
     return image_bytes
