@@ -1,17 +1,13 @@
 import streamlit as st
 st.set_page_config(page_title="MetaTone Lab", layout="wide")
 
-import sys
 import os
 import subprocess
 import tempfile
 import glob
-import shutil
-import json
 import numpy as np
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
-import random
 
 # Environment variables for YuE inference
 YUE_PYTHON   = os.environ.get("YUE_PYTHON",   "python")
