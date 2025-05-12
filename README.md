@@ -9,15 +9,15 @@
 Below are three silent GIFs showcasing the full workflow:
 
 1. **Sketch Canvas**  
-   ![Sketch Canvas](docs/paint-demo.gif)  
+   <img src="docs/paint-demo.gif" alt="Sketch Canvas" width="400px" />  
    *Sketch Canvas*: Freehand drawing on the canvas
 
 2. **Lyrics Generation**  
-   ![Lyrics Generation](docs/lyrics-demo.gif)  
+   <img src="docs/lyrics-demo.gif" alt="Sketch Canvas" width="400px" />  
    *Lyrics Generation*: Auto-generated, structured song lyrics
 
 3. **Audio Synthesis**  
-   ![Audio Synthesis](docs/audio-demo.gif)  
+   <img src="docs/audio-demo.gif" alt="Sketch Canvas" width="400px" />  
    *Audio Synthesis*: Plays the final track after clicking “Generate complete song”
 
 
