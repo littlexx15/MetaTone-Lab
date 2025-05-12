@@ -88,7 +88,7 @@ pip install -r requirements.txt
 
 ---
 
-## 4. Install FlashAttention2 (Optional but Highly Recommended)
+## 4. Install FlashAttention2
 
 YuE requires `FlashAttention 2` for long audio generation. Before installation, ensure your CUDA version is correct.
 
