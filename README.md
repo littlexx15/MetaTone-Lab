@@ -4,7 +4,7 @@
 
 ## Link to project video recording: https://artslondon-my.sharepoint.com/:v:/g/personal/x_xiang0220241_arts_ac_uk/ESZ-YUZ9VIJIhMMBlMmSBGYBtRtMArcEjBtgmW2WdZXiQw
 
-## 📸 Demo & Screenshots
+## Demo & Screenshots
 
 Below are three silent GIFs showcasing the full workflow:
 
