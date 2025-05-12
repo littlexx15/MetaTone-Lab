@@ -1,10 +1,25 @@
-# AI-4-Media-Project-XiaoxinXiang
+# MetaTone Lab
+> **MetaTone Lab** — an interactive generative-AI app that turns freehand sketches into poetic song lyrics and full audio tracks.
 
 
-## Student name: Xiaoxin Xiang
-## Student number: 24007516
-## Project title: MetaTone Lab
 ## Link to project video recording: https://artslondon-my.sharepoint.com/:v:/g/personal/x_xiang0220241_arts_ac_uk/ESZ-YUZ9VIJIhMMBlMmSBGYBtRtMArcEjBtgmW2WdZXiQw
+
+## 📸 Demo & Screenshots
+
+Below are three silent GIFs showcasing the full workflow:
+
+1. **Sketch Canvas**  
+   ![Sketch Canvas](docs/paint-demo.gif)  
+   *Sketch Canvas*: Freehand drawing on the canvas
+
+2. **Lyrics Generation**  
+   ![Lyrics Generation](docs/lyrics-demo.gif)  
+   *Lyrics Generation*: Auto-generated, structured song lyrics
+
+3. **Audio Synthesis**  
+   ![Audio Synthesis](docs/audio-demo.gif)  
+   *Audio Synthesis*: Plays the final track after clicking “Generate complete song”
+
 
 # Setup instructions:
 
