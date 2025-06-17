@@ -2,7 +2,7 @@
 > **MetaTone Lab** — an interactive generative-AI app that turns freehand sketches into poetic song lyrics and full audio tracks.
 
 
-## Link to project video recording: https://artslondon-my.sharepoint.com/:v:/g/personal/x_xiang0220241_arts_ac_uk/ESZ-YUZ9VIJIhMMBlMmSBGYBtRtMArcEjBtgmW2WdZXiQw
+## Link to project video recording: https://youtu.be/5WSEsJBx-RI
 
 ## Demo & Screenshots
 
